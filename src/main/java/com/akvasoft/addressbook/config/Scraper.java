@@ -2,6 +2,7 @@ package com.akvasoft.addressbook.config;
 
 
 import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.SessionNotCreatedException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.firefox.FirefoxDriver;
@@ -9,6 +10,8 @@ import org.openqa.selenium.firefox.FirefoxOptions;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 
@@ -18,6 +21,7 @@ public class Scraper implements InitializingBean {
     @Autowired
     private Repo repo;
 
+    private int count = 0;
     private int startPage = 1;
     private int endPage = 20000;
 //    private int endPage = 999999;
@@ -34,11 +38,13 @@ public class Scraper implements InitializingBean {
         WebElement building_address = null;
         WebElement panel = null;
         Modal modal = new Modal();
+        count++;
+        System.out.println("LINK COUNT " + count);
         try {
             panel = driver.findElementByXPath("/html/body/div[1]/div/div/aside/div[2]");
             building_address = panel.findElement(By.className("location-building_address"));
         } catch (Exception e) {
-            System.err.println("NO DATA IN " + s);
+//            System.err.println("NO DATA IN " + s);
             return false;
         }
         String name = building_address.findElements(By.xpath("./*")).get(0).getAttribute("innerText");
@@ -46,10 +52,10 @@ public class Scraper implements InitializingBean {
         String city = building_address.findElements(By.xpath("./*")).get(2).getAttribute("innerText");
         String state = city.split(",")[1];
 
-        System.out.println("NAME :  " + name);
-        System.out.println("STREET :  " + street);
-        System.out.println("CITY :  " + city);
-        System.out.println("STATE :  " + state);
+//        System.out.println("NAME :  " + name);
+//        System.out.println("STREET :  " + street);
+//        System.out.println("CITY :  " + city);
+//        System.out.println("STATE :  " + state);
 
         modal.setCity(city);
         modal.setLink(s);
@@ -70,27 +76,43 @@ public class Scraper implements InitializingBean {
         return true;
     }
 
-    private synchronized void saveAddress(Modal modal) throws Exception {
+    @Transactional(propagation = Propagation.REQUIRED)
+    public synchronized void saveAddress(Modal modal) throws Exception {
         repo.save(modal);
 
     }
 
     private void startThreads(String url) {
-        for (int x = 1; x < 11; x++) {
+        for (int x = 1; x < 7; x++) {
             System.err.println("DRIVER " + x + " INITIALIZED.");
             int y = getStartingPage(x);
             int z = getEndPage(x);
 
             new Thread(() -> {
                 FirefoxDriver driver = new DriverInitializer().getFirefoxDriver();
+                int t = 0;
                 for (int i = y; i < z; i++) {
                     try {
+                        System.out.println(url + i);
                         scrape(url + i, driver);
+                        t++;
+                        if (t % 40 == 0) {
+
+                            driver.quit();
+                            Thread.sleep(1000);
+                            driver = new DriverInitializer().getFirefoxDriver();
+                            Thread.sleep(1000);
+                        }
                     } catch (SessionNotCreatedException e) {
-                        i--;
-                        driver.close();
+                        e.printStackTrace();
+                        System.out.println("sssssssssssssssssss");
+                        System.out.println(url + i);
+//                        driver.quit();
+//                        driver = new DriverInitializer().getFirefoxDriver();
+                    } catch (NoSuchSessionException e ) {
                         driver = new DriverInitializer().getFirefoxDriver();
-                    } catch (Exception e) {
+                    }
+                    catch (Exception e) {
                         e.printStackTrace();
                         continue;
                     }
